@@ -5,8 +5,9 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 import log.commlog as commlog
 import json
-import controlVoice
-
+import controlVoice,pyautogui
+from pythonosc import udp_client
+import argparse,re
 class MainFram(QWidget):
     def __init__(self):
         super().__init__()
@@ -15,6 +16,9 @@ class MainFram(QWidget):
         self.t1=threading.Thread(target=self.remote)
         self.t1.setDaemon(True)
         self.t1.start()
+        # self.udpt = threading.Thread(target=self.udpserver)
+        # self.udpt.setDaemon(True)
+        # self.udpt.start()
 
     def initUI(self):
         vbox=QVBoxLayout()
@@ -30,7 +34,51 @@ class MainFram(QWidget):
         self.setGeometry(100,100,300,300)
         self.showMinimized()
         # self.show()
-
+    def udpserver(self):
+        commlog.logger.info("udp监听启动")
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s1.connect(('8.8.8.8', 80))
+            ip = s1.getsockname()[0]
+        except Exception as e:
+            print(e.args)
+        finally:
+            s1.close()
+        # 将socket绑定到本机IP和端口
+        s.bind((ip, 8100))
+        # 服务端开始监听来自客户端的连接
+        while True:
+            try:
+                content = s.recv(1024).decode('utf-8')
+                commlog.logger.info(content)
+                pattern = r'play'
+                pattern2 = r'stop'
+                result1 = re.match(pattern, content)
+                if result1 is not None:
+                    commlog.logger.info("play")
+                    parser = argparse.ArgumentParser()
+                    parser.add_argument("--ip", default="127.0.0.1",
+                                        help="The ip of the OSC server")
+                    parser.add_argument("--port", type=int, default=7000,
+                                        help="The port the OSC server is listening on")
+                    args = parser.parse_args()
+                    client = udp_client.SimpleUDPClient(args.ip, args.port)
+                    client.send_message('/composition/layers/3/clips/1/connect', 1)
+                result2 = re.match(pattern2, content)
+                if result2 is not None:
+                    commlog.logger.info("stop")
+                    parser = argparse.ArgumentParser()
+                    parser.add_argument("--ip", default="127.0.0.1",
+                                        help="The ip of the OSC server")
+                    parser.add_argument("--port", type=int, default=7000,
+                                        help="The port the OSC server is listening on")
+                    args = parser.parse_args()
+                    client = udp_client.SimpleUDPClient(args.ip, args.port)
+                    client.send_message('/composition/layers/3/clips/2/connect', 1)
+            except Exception as e:
+                commlog.logger.error(e)
+                print(e)
     def remote(self):
         # 创建socket对象
         s = socket.socket()
@@ -66,14 +114,27 @@ class MainFram(QWidget):
                     recdata=jsondata['data']
                     os.system(recdata)
                 elif req_type=='sysvoice':
-                    c = controlVoice.ControlVoice()
+                    c1 = controlVoice.ControlVoice()
                     recdata = jsondata['data']
                     if recdata=='addvoice':
-                        c.addVoice()
+                        commlog.logger.info("增加音量")
+                        c1.addVoice()
                     elif recdata=='minusvoice':
-                        c.minusVoice()
+                        commlog.logger.info("减小音量")
+                        c1.minusVoice()
                     elif recdata=='mutevoice':
-                        c.muteVoice()
+                        commlog.logger.info("静音")
+                        c1.muteVoice()
+                elif req_type=='video':
+                    recdata = jsondata['data']
+                    if recdata=='q':
+                        pyautogui.press('q')
+                    if recdata=='w':
+                        pyautogui.press('w')
+                    if recdata=='p':
+                        pyautogui.press('p')
+                    if recdata=='c':
+                        pyautogui.press('c')
             except Exception as e:
                 print(e)
 
